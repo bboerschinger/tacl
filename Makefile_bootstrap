@@ -1,0 +1,263 @@
+# AGWS/Makefile
+#  modified by ben boerschinger, 15/11/13
+#
+#  (c) Mark Johnson, 20th July 2012
+#
+#
+# Makefile for Adaptor Grammar word segmentation
+# using stress cues
+
+# set default shell
+#
+SHELL=/bin/bash
+
+# CORPUS is the name of the corpus we are using
+CORPUS=alex
+
+# CONDITION is the condition we are looking at, primaryreduced, primaryseconday, nostress, primaryall
+# primaryreduced corresponds to a setting where only primary stresses are transcribed and function words are not stress
+# primaryall also has stressed function words
+# nostress is lacking stress completely from its input
+CONDITION=primaryonly
+
+
+# DIR is the base directory in which we work (all files produced are
+# relative to this directory)
+#
+DIR:=./runsbootstrap/$(CORPUS)/$(CONDITION)
+
+# SIZE is the length of the prefix of the corpus used as input for inference
+SIZE=50
+
+# GRAMMAR is the name of the grammar we are looking at
+GRAMMAR=colloc-nophon-stress-nogold-lrcount
+
+# SOURCEBASE is the gold data file
+SOURCEBASE=Data/$(CORPUS)_all_$(CONDITION)
+
+# the folders where the outputs reside
+EVALDIR:=$(DIR)/$(GRAMMAR)_$(SIZE)_Eval
+TMPDIR:=$(DIR)/$(GRAMMAR)_$(SIZE)_Tmp
+
+# a test-set
+TESTINBASE=Data/$(CORPUS)_test_$(CONDITION)
+TESTINNOVELBASE=Data/$(CORPUS)_testnovel_$(CONDITION)
+
+# OUTPUTPREFIX is a prefix prepended to all temporary and output run
+# files (change this for a new run)
+#
+OUTPUTPREFIX=x
+
+# BURNINSKIP is the fraction of the sample to be discarded before collecting 
+# samples for evaluation
+BURNINSKIP=0.8
+
+# PYFLAGS specify flags to be given to py-cfg, e.g., -P (predictive filter)
+PYFLAGS=-d 101
+
+# which rule is to be tracked...
+RULETRACK=GenWord
+
+# each fold is a different bootstrap-resampled corpus, with 0 being the original data
+#FOLDS=00 01 02 03 04 05 06 07
+FOLDS=0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
+
+# OUTS is a list of types of output files we're going to produce
+OUTS=$(foreach f,$(FOLDS),trscore_$(f)) $(foreach f,$(FOLDS),testwordscore_$(f)) $(foreach f,$(FOLDS),testscore_$(f)) $(foreach f,$(FOLDS),trwordscore_$(f)) $(foreach f,$(FOLDS),testnovelscore_$(f)) $(foreach f,$(FOLDS),testnovelwordscore_$(f))
+
+PYTHON=/usr/local/bin/python2.7
+
+# PYCFG is the py-cfg program (including its path)
+#
+PYCFG=~/software/py-cfg/py-cfg
+
+PYAS=1e-4
+PYES=2
+PYFS=1
+
+PYBS=1e4
+PYGS=100
+PYHS=0.01
+
+PYWS=1
+
+PYTS=1
+PYMS=0
+
+# PYNS is the number of iterations
+PYNS=1000
+
+# PYRS controls how long we do table label resampling for (-1 = forever)
+PYRS=-1
+
+PYD=D_
+PYE=E_
+
+# rate at which model's output is evaluated
+TRACEEVERY=10
+
+# EXEC is the prefix used to execute the py-cfg command
+EXEC=time
+
+# EVALREGEX is the regular expression given to eval.py in the evaluation script (may depend on grammar)
+# Beware of spurios matches --- note that adapted non-terminals have a #-in each of their occurence, so you can match ^Word# to exclude matching Words, e.g.
+EVALREGEX=^Word
+
+# IGNORETERMINALREGEX is the regular expression given to eval.py in the evaluation script
+IGNORETERMINALREGEX=^[$$]{3}$$
+
+# WORDSPLITREGEX is the regular expression given to eval.py in the evaluation script
+WORDSPLITREGEX=[\\t]+
+
+################################################################################
+#                                                                              #
+#                     everything below this should be generic                  #
+#                                                                              #
+################################################################################
+
+# INPUTFILE is the file that contains the adaptor grammar input
+#
+INPUTFILEBASE:=$(TMPDIR)/AGinput
+TESTINPUTBASE:=$(TMPDIR)/AGtestinput
+TESTINPUTNOVELBASE:=$(TMPDIR)/AGtestnovelinput
+
+# GOLDFILE is the file that contains word and syllable boundaries that will be used to
+#  evaluate the adaptor grammar word segmentation
+#
+GOLDFILEBASE:=$(TMPDIR)/AGgold
+TESTGOLDBASE:=$(TMPDIR)/AGtestgold
+TESTNOVELGOLDBASE:=$(TMPDIR)/AGtestnovelgold
+
+# The list of files we will make
+FILENAMEBASE=$(OUTPUTPREFIX)_G$(GRAMMAR)_$(PYD)$(PYE)n$(PYNS)_m$(PYMS)_t$(PYTS)_w$(PYWS)_a$(PYAS)_b$(PYBS)_e$(PYES)_f$(PYFS)_g$(PYGS)_h$(PYHS)_R$(PYRS)
+OUTPUTS=$(foreach out,$(OUTS),$(EVALDIR)/$(FILENAMEBASE).$(out))
+
+TARGETS=$(OUTPUTS)
+
+# the grammarfile to be built
+GRAMMARFILE=$(TMPDIR)/$(GRAMMAR).gr
+
+.PHONY: top
+top: $(TARGETS)
+
+.SECONDARY:
+#.DELETE_ON_ERROR:
+
+
+# HELPERS defined by Mark to take apart the filenames
+getarg=$(patsubst $(1)%,%,$(filter $(1)%,$(subst _, ,$(2))))
+
+keyword=$(patsubst $(1),-$(1),$(filter $(1),$(subst _, ,$(2))))
+
+$(EVALDIR)/$(FILENAMEBASE).trscore_%: $(TMPDIR)/$(FILENAMEBASE).travprs_% programs/evaluate.py $(GOLDFILEBASE)_%
+	@mkdir -p $(EVALDIR)
+	$(PYTHON) programs/evaluate.py $(GOLDFILEBASE)_$* < $< > $@
+
+$(TMPDIR)/$(FILENAMEBASE).travprs_%: $(TMPDIR)/$(FILENAMEBASE)_%.syllables programs/mbr.py
+	$(PYTHON) programs/mbr.py $< > $@
+
+
+$(TMPDIR)/$(FILENAMEBASE).testavprs_%: $(TMPDIR)/$(FILENAMEBASE)_%.testsyllables programs/mbr.py
+	$(PYTHON) programs/mbr.py $< > $@
+
+$(TMPDIR)/$(FILENAMEBASE).testnovelavprs_%: $(TMPDIR)/$(FILENAMEBASE)_%.testnovelsyllables programs/mbr.py
+	$(PYTHON) programs/mbr.py $< > $@
+
+$(EVALDIR)/$(FILENAMEBASE).testscore_%: $(TMPDIR)/$(FILENAMEBASE).testavprs_% programs/evaluate.py $(TESTGOLDBASE)_%
+	@mkdir -p $(EVALDIR)
+	$(PYTHON) programs/evaluate.py $(TESTGOLDBASE)_$* < $< > $@
+
+
+$(EVALDIR)/$(FILENAMEBASE).testnovelscore_%: $(TMPDIR)/$(FILENAMEBASE).testnovelavprs_% programs/evaluate.py $(TESTNOVELGOLDBASE)_%
+	@mkdir -p $(EVALDIR)
+	$(PYTHON) programs/evaluate.py $(TESTNOVELGOLDBASE)_$* < $< > $@
+
+$(EVALDIR)/$(FILENAMEBASE).trwordscore_%: $(TMPDIR)/$(FILENAMEBASE).travprs_% scripts/resultfiles.sh programs/eval-words.py $(GOLDFILEBASE)_%
+	@mkdir -p $(EVALDIR)
+	scripts/resultfiles.sh $(GOLDFILEBASE)_$* $< > $@  #|| scripts/resultfiles.sh $(GOLDFILE) $< > $@ && true
+
+
+$(EVALDIR)/$(FILENAMEBASE).testwordscore_%: $(TMPDIR)/$(FILENAMEBASE).testavprs_% scripts/resultfiles.sh programs/eval-words.py $(TESTGOLDBASE)_%
+	@mkdir -p $(EVALDIR)
+	scripts/resultfiles.sh $(TESTGOLDBASE)_$* $< > $@
+
+$(EVALDIR)/$(FILENAMEBASE).testnovelwordscore_%: $(TMPDIR)/$(FILENAMEBASE).testnovelavprs_% scripts/resultfiles.sh programs/eval-words.py $(TESTNOVELGOLDBASE)_%
+	@mkdir -p $(EVALDIR)
+	scripts/resultfiles.sh $(TESTNOVELGOLDBASE)_$* $< > $@
+
+$(TMPDIR)/$(FILENAMEBASE)_%.syllables $(TMPDIR)/$(FILENAMEBASE)_%.testsyllables $(TMPDIR)/$(FILENAMEBASE)_%.testnovelsyllables: $(PYCFG) $(GRAMMARFILE) $(GOLDFILEBASE)_% $(INPUTFILEBASE)_% $(TESTGOLDBASE)_% $(TESTINPUTBASE)_% $(TESTNOVELGOLDBASE)_% $(TESTINPUTNOVELBASE)_% programs/trackAllRuleProbs.py programs/eval.py programs/collectTreeSyllables.py
+	@mkdir -p $(TMPDIR)
+	echo "Starting $@"
+	date
+	$(EXEC) $(PYCFG) $(PYFLAGS) \
+		-A $(basename $@).prs \
+		-F $(basename $@).trace \
+		-G $(basename $@).wlt \
+		$(call keyword,D,$(FILENAMEBASE)) \
+		$(call keyword,E,$(FILENAMEBASE)) \
+		-r $$RANDOM$$RANDOM \
+		-a $(call getarg,a,$(FILENAMEBASE)) \
+		-b $(call getarg,b,$(FILENAMEBASE)) \
+		-e $(call getarg,e,$(FILENAMEBASE)) \
+		-f $(call getarg,f,$(FILENAMEBASE)) \
+		-g $(call getarg,g,$(FILENAMEBASE)) \
+		-h $(call getarg,h,$(FILENAMEBASE)) \
+		-w $(call getarg,w,$(FILENAMEBASE)) \
+		-T $(call getarg,t,$(FILENAMEBASE)) \
+		-m $(call getarg,m,$(FILENAMEBASE)) \
+		-n $(call getarg,n,$(FILENAMEBASE)) \
+		-R $(call getarg,R,$(FILENAMEBASE)) \
+		-x $(TRACEEVERY) \
+		-u $(TESTINPUTBASE)_$* \
+                -U "$(PYTHON) programs/collectTreeSyllables.py --noLabel --segSep=\"\" --sylSep=\".\" --wordSep=\" \" --category=\"^Word\" --sylCategory=\"^(Syll[SU]?|Syll[SU]?I|Syll[SU]?F|Syll[SU]?IF)$$\" | $(PYTHON) programs/evaluate.py $(TESTGOLDBASE)_$* > $(basename $@).testseval" \
+                -U "$(PYTHON) programs/collectTreeSyllables.py --noLabel --segSep=\"\" --sylSep=\".\" --wordSep=\" \" --category=\"^Word\" --sylCategory=\"^(Syll[SU]?|Syll[SU]?I|Syll[SU]?F|Syll[SU]?IF)$$\" --nepochs $(call getarg,n,$(FILENAMEBASE)) --rate $(TRACEEVERY) --ignore $(BURNINSKIP) > $(basename $@).testsyllables" \
+		-X "$(PYTHON) programs/collectTreeSyllables.py --noLabel --segSep=\"\" --sylSep=\".\" --wordSep=\" \" --category=\"^Word\" --sylCategory=\"^(Syll[SU]?|Syll[SU]?I|Syll[SU]?F|Syll[SU]?IF)$$\" | $(PYTHON) programs/evaluate.py $(GOLDFILEBASE)_$* > $(basename $@).trseval" \
+		-X "$(PYTHON) programs/collectTreeSyllables.py --noLabel --segSep=\"\" --sylSep=\".\" --wordSep=\" \" --category=\"^Word\" --sylCategory=\"^(Syll[SU]?|Syll[SU]?I|Syll[SU]?F|Syll[SU]?IF)$$\" --nepochs $(call getarg,n,$(FILENAMEBASE)) --rate $(TRACEEVERY) --ignore $(BURNINSKIP) > $(basename $@).syllables" \
+		-Y "$(PYTHON) programs/trackAllRuleProbs.py $(CORPUS) $(GRAMMAR) $(SIZE) $(CONDITION) $* $(call getarg,n,$(FILENAMEBASE)) $(BURNINSKIP) $(TRACEEVERY) > $(basename $@).grammarsamples" \
+		-v $(TESTINPUTNOVELBASE)_$* \
+		-V "$(PYTHON) programs/collectTreeSyllables.py --noLabel --segSep=\"\" --sylSep=\".\" --wordSep=\" \" --category=\"^Word\" --sylCategory=\"^(Syll[SU]?|Syll[SU]?I|Syll[SU]?F|Syll[SU]?IF)$$\" | $(PYTHON) programs/evaluate.py $(TESTNOVELGOLDBASE)_$* > $(basename $@).testnovelseval" \
+		-V "$(PYTHON) programs/collectTreeSyllables.py --noLabel --segSep=\"\" --sylSep=\".\" --wordSep=\" \" --category=\"^Word\" --sylCategory=\"^(Syll[SU]?|Syll[SU]?I|Syll[SU]?F|Syll[SU]?IF)$$\" --nepochs $(call getarg,n,$(FILENAMEBASE)) --rate $(TRACEEVERY) --ignore $(BURNINSKIP) > $(basename $@).testnovelsyllables" \
+		$(TMPDIR)/$(call getarg,G,_$(FILENAMEBASE)).gr \
+		< $(INPUTFILEBASE)_$*
+
+# additional testfile
+#		-v $(TESTINPUTNOVEL) \
+#               -V "$(PYTHON) programs/collectTreeSyllables.py --noLabel --segSep=\"\" --sylSep=\".\" --wordSep=\" \" --category=\"^Word\" --sylCategory=\"^(Syll[SU]?|Syll[SU]?I|Syll[SU]?F|Syll[SU]?IF)$$\" | $(PYTHON) programs/evaluate.py $(TESTNOVELGOLD) > $(basename $@).testnovelseval" \
+#               -V "$(PYTHON) programs/collectTreeSyllables.py --noLabel --segSep=\"\" --sylSep=\".\" --wordSep=\" \" --category=\"^Word\" --sylCategory=\"^(Syll[SU]?|Syll[SU]?I|Syll[SU]?F|Syll[SU]?IF)$$\" --nepochs $(call getarg,n,$(FILENAMEBASE)) --rate $(TRACEEVERY) --ignore $(BURNINSKIP) > $(basename $@).testnovelsyllables" \
+
+$(TMPDIR)/%.gr: programs/input2grammar_notlexicon.py
+	mkdir -p $(TMPDIR)
+	$(PYTHON) $^ --grammar $(*F) > $@
+
+$(INPUTFILEBASE)_%: programs/source2AGinput.py $(SOURCEBASE)_%.phon
+	mkdir -p $(TMPDIR)
+	head -n$(SIZE) $(SOURCEBASE)_$*.phon | $(PYTHON) programs/source2AGinput.py -s0 -b "\.\||\." | head -n$(SIZE) > $@ 
+
+$(TESTINPUTBASE)_%: programs/source2AGinput.py $(TESTINBASE)_%.phon
+	mkdir -p $(TMPDIR)
+	$(PYTHON) $< $(TESTINBASE)_$*.phon -s0 -b "\.\||\." > $@
+
+$(TESTINPUTNOVELBASE)_%: programs/source2AGinput.py $(TESTINNOVELBASE)_%.phon
+	mkdir -p $(TMPDIR)
+	$(PYTHON) $< $(TESTINNOVELBASE)_$*.phon -s0 -b "\.\||\." > $@
+
+$(GOLDFILEBASE)_%: $(SOURCEBASE)_%.phon
+	mkdir -p $(TMPDIR)
+	echo "	head -n$(SIZE) $< | sed 's/ //g; s/\.|/ /g; s/\.$$//g' > $@"
+	head -n$(SIZE) $< | sed 's/ //g; s/\.|/ /g; s/\.$$//g' > $@
+
+$(TESTGOLDBASE)_%: $(TESTINBASE)_%.phon
+	mkdir -p $(TMPDIR)
+	sed 's/ //g; s/\.|/ /g; s/\.$$//g' $< > $@
+
+$(TESTNOVELGOLDBASE)_%: $(TESTINNOVELBASE)_%.phon
+	mkdir -p $(TMPDIR)
+	sed 's/ //g; s/\.|/ /g; s/\.$$//g' $< > $@
+
+.PHONY: clean
+clean: 
+#	rm -fr $(TMP)
+
+.PHONY: real-clean
+real-clean: clean
+#	rm -fr $(OUTPUTDIR)

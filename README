@@ -1,0 +1,37 @@
+Syllabification and joint wordsegmentation using adaptor grammars
+
+Makefile tackles stress, settling on one specific model of syllable structure
+which assumes an initial/final distinction and incorporates obligatory onset/nocoda
+biases, as well as optional sonority-sequencing soft-constraints
+
+Makefile_bootstrap performs experiments on a total of 25 sample corpora, the corpus
+with index 0 being the original and the corpora from 1-24 being boostrap-resampled
+versions
+
+Makefile uses the "old" grammars with absolute or "relative" stress-patterns, whereas
+Makefile_bootstrap switched to grammars which allow to switch phonotactics on / off,
+switch knowledge of Consonants / Vowels on off, and use a allPatterns-with-Unique-Stress
+and a left / right + "extra-metrical"-syllable stress-grammar.
+
+For example, run
+
+make SIZE=10 PYNS=10
+
+for a very brief run on the default corpus (Alex) with the default grammar (colloc3syllIFstress)
+
+make -f Makefile_bootstrap SIZE=10 PYNS=10 FOLDS=0
+
+runs with the default 
+
+
+
+programs/ and Makefile contain scripts for running experiments
+
+Data/ contains data
+
+ dataprep/ contains scripts to extract data from inputs
+   - there is scripts which interface with the CSV-files John prepared
+ dicts/ contains pronunciation dictionary to perform transcription by look-up
+
+
+
